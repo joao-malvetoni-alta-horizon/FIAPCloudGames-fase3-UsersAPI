@@ -1,0 +1,33 @@
+{
+  "users": [
+    {
+      "name": "fcg",
+      "password_hash": "6Q3fwfIba5JsBCv10hV/UdHqUCXVqtG3hfxwMvq003MVPnFP",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "vhosts": [
+    { "name": "/" }
+  ],
+  "permissions": [
+    { "user": "fcg", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*" }
+  ],
+  "topic_permissions": [],
+  "parameters": [],
+  "global_parameters": [],
+  "policies": [],
+  "exchanges": [
+    {
+      "name": "users.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [],
+  "bindings": []
+}
