@@ -15,6 +15,10 @@
         <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7"/>
         <PackageReference Include="Microsoft.OpenApi" Version="2.9.0"/>
         <PackageReference Include="Serilog.AspNetCore" Version="9.*"/>
+        <!-- Agente APM do New Relic (Fase 3 - observabilidade). O pacote não traz código
+             referenciável: ele copia o agente para a pasta "newrelic/" do output, que o
+             profiler do CoreCLR carrega em runtime (variáveis CORECLR_* no Dockerfile). -->
+        <PackageReference Include="NewRelic.Agent" Version="10.54.0"/>
     </ItemGroup>
 
     <ItemGroup>
