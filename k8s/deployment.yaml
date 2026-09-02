@@ -36,6 +36,11 @@ spec:
               valueFrom: { secretKeyRef: { name: fcg-secrets, key: JwtSettings__SecretKey } }
             - name: ConnectionStrings__DefaultConnection
               valueFrom: { secretKeyRef: { name: fcg-secrets, key: Users__ConnectionString } }
+            # Observabilidade (New Relic). A license key é um segredo: vem do Secret
+            # fcg-secrets, nunca do ConfigMap. As demais variáveis do agente (app name,
+            # distributed tracing e encaminhamento de logs) já vêm do Dockerfile.
+            - name: NEW_RELIC_LICENSE_KEY
+              valueFrom: { secretKeyRef: { name: fcg-secrets, key: NewRelic__LicenseKey } }
           # Usuários não expõe /health: sonda TCP na porta 8080.
           livenessProbe:
             tcpSocket: { port: 8080 }
