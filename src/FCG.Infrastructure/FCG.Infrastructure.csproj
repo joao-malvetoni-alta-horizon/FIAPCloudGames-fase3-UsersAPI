@@ -14,7 +14,7 @@
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1"/>
-        <PackageReference Include="FiapCloudGames.RabbitMq" Version="1.0.0"/>
+        <PackageReference Include="AWSSDK.SimpleNotificationService" Version="4.0.100.11"/>
     </ItemGroup>
 
     <PropertyGroup>

@@ -17,7 +17,7 @@ jogos **não** pertence a este serviço — ele é responsabilidade do `CatalogA
 - Entity Framework Core + PostgreSQL (Npgsql) com migrations
 - JWT (`Microsoft.AspNetCore.Authentication.JwtBearer`)
 - BCrypt para hash de senha
-- RabbitMQ (`RabbitMQ.Client`, sem MassTransit) para eventos de integração
+- AWS SNS (`AWSSDK.SimpleNotificationService`) para eventos de integração
 - Contratos de eventos compartilhados via pacote NuGet `FiapCloudGames.Contracts`
 - Serilog (logs estruturados) + Swagger
 - Testes: xUnit + Shouldly + NSubstitute (unitários) e Testcontainers (integração)
@@ -32,7 +32,7 @@ src/
   FCG.API             # Endpoints, middleware, composição
 tests/
   FCG.UnitTests        # xUnit + Shouldly + NSubstitute
-  FCG.IntegrationTests # xUnit + Shouldly + Testcontainers (PostgreSQL real)
+  FCG.IntegrationTests # xUnit + Shouldly + Testcontainers (PostgreSQL + LocalStack/SNS/SQS)
 ```
 
 ## Variáveis de ambiente
@@ -43,15 +43,21 @@ tests/
 | `JwtSettings__SecretKey` | Chave secreta para assinar os tokens JWT | *(string com ≥ 32 caracteres)* |
 | `JwtSettings__ExpirationHours` | Validade do token, em horas | `4` |
 | `ASPNETCORE_ENVIRONMENT` | Ambiente (`Development` habilita o Swagger) | `Development` |
+| `Sns__TopicArn` | ARN do tópico SNS onde o `UserRegisteredEvent` é publicado | `arn:aws:sns:us-east-1:450753703903:fcg-user-events` |
+| `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credenciais AWS para publicar no SNS (padrão do SDK; sem elas a publicação falha silenciosamente e o cadastro continua normal) | — |
 
 ## Executando localmente
 
-Suba a infraestrutura (PostgreSQL + RabbitMQ) via Docker e rode a API localmente:
+Suba o PostgreSQL via Docker e rode a API localmente:
 
 ```bash
-docker compose up -d          # PostgreSQL + RabbitMQ (Management UI em http://localhost:15672 — fcg/fcg123)
+docker compose up -d          # PostgreSQL
 dotnet run --project src/FCG.API
 ```
+
+A publicação do `UserRegisteredEvent` (SNS) exige credenciais AWS reais no ambiente
+para funcionar de ponta a ponta; sem elas, a chamada ao SNS falha e é apenas logada
+como warning — o cadastro de usuário continua funcionando normalmente.
 
 As migrations e o seed do administrador raiz são aplicados automaticamente na
 inicialização. Ajuste as conexões em `src/FCG.API/appsettings.Development.json`
@@ -84,22 +90,28 @@ dotnet test tests/FCG.UnitTests          # unitários (rápidos, sem dependênci
 dotnet test tests/FCG.IntegrationTests   # integração (requer Docker p/ Testcontainers)
 ```
 
-## Eventos de integração (RabbitMQ)
+## Eventos de integração (SNS)
 
-No cadastro de usuário a API publica eventos em uma exchange `topic`, usando o
-`RabbitMQ.Client` diretamente (sem MassTransit). Os contratos vêm do pacote
-`FiapCloudGames.Contracts`, compartilhado entre os microsserviços.
+No cadastro de usuário a API publica o evento em um tópico SNS, usando
+`AWSSDK.SimpleNotificationService` diretamente (`SnsIntegrationEventPublisher`). Os
+contratos vêm do pacote `FiapCloudGames.Contracts`, compartilhado entre os
+microsserviços. O consumidor é a função Lambda do repositório
+`FIAPCloudGames-fase3-NotificationsAPI` (SNS → SQS → Lambda → DynamoDB).
 
-| Gatilho | Evento | Exchange | Routing key |
-|---|---|---|---|
-| `POST /api/users/register` | `UserRegisteredEvent` | `users.exchange` | `user.registered` |
-| `POST /api/admin/users` | `UserRegisteredEvent` | `users.exchange` | `user.registered` |
+| Gatilho | Evento | Tópico SNS |
+|---|---|---|
+| `POST /api/users/register` | `UserRegisteredEvent` | `fcg-user-events` |
+| `POST /api/admin/users` | `UserRegisteredEvent` | `fcg-user-events` |
 
-A publicação ocorre após o commit no banco. Se o broker estiver indisponível, a
-falha é logada sem quebrar a operação de negócio (entrega garantida exigiria o
-padrão Outbox).
+A publicação ocorre após o commit no banco, com o `traceparent` (W3C) injetado como
+message attribute para permitir a correlação do trace no New Relic entre esta API e a
+Lambda consumidora. Se o SNS estiver indisponível (ou sem credenciais), a falha é
+logada sem quebrar a operação de negócio (entrega garantida exigiria o padrão Outbox).
 
-## Próximos passos (Fase 2)
+Testado de ponta a ponta em `tests/FCG.IntegrationTests/UserEventsPublishingTests.cs`,
+que sobe um LocalStack (SNS + SQS) via Testcontainers para validar a publicação real.
+
+## Próximos passos
 
 - Trocar a referência local de `FiapCloudGames.Contracts` por `PackageReference` (nuget.org);
 - Padrão Outbox para entrega garantida dos eventos;

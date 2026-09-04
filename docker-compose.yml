@@ -1,6 +1,9 @@
 # Infraestrutura local para desenvolvimento da UsersAPI.
-# Sobe PostgreSQL e RabbitMQ; a API roda localmente com `dotnet run`
-# (ambiente Development -> aponta para localhost).
+# Sobe PostgreSQL; a API roda localmente com `dotnet run` (ambiente Development ->
+# aponta para localhost). O UserRegisteredEvent é publicado via SNS (ver
+# appsettings.Development.json / SnsIntegrationEventPublisher) — não depende mais de
+# um broker local. Para testar a publicação real seria necessário credenciais AWS
+# válidas ou LocalStack (mesma abordagem usada em tests/FCG.IntegrationTests).
 #
 # Obs.: a API ainda não é construída aqui porque, na opção A, ela referencia o
 # projeto de contratos (FiapCloudGames.Contracts) fora deste repositório, fora do
@@ -20,23 +23,6 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fcg -d fcgdb"]
       interval: 5s
-      timeout: 5s
-      retries: 10
-
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    # Topologia (usuário fcg, vhost e exchange) provisionada no boot via
-    # definitions.json — não há env RABBITMQ_DEFAULT_USER porque, com
-    # load_definitions ativo, o broker ignora o usuário default.
-    volumes:
-      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
-    ports:
-      - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI (http://localhost:15672 - fcg/fcg123)
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
       timeout: 5s
       retries: 10
 

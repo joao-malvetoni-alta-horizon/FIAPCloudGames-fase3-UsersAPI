@@ -1,21 +1,20 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
+using Amazon.SQS;
+using Amazon.SQS.Model;
 using FCG.Application.Auth.DTOs;
 using FCG.Domain.Users.Enums;
 using FiapCloudGames.Contracts.Users;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
 using Shouldly;
 
 namespace FCG.IntegrationTests;
 
 /// <summary>
 /// Verifica, ponta a ponta, que os eventos de integração são realmente publicados no
-/// RabbitMQ quando os endpoints de usuário são chamados. Um consumidor de teste declara
-/// uma fila ligada à exchange e às routing keys dos eventos e valida a mensagem recebida.
+/// SNS quando os endpoints de usuário são chamados. Uma fila SQS já inscrita no tópico
+/// (ver UsersApiFactory) recebe a mensagem e o teste valida o conteúdo.
 /// </summary>
 public class UserEventsPublishingTests(UsersApiFactory factory) : IClassFixture<UsersApiFactory>
 {
@@ -27,9 +26,7 @@ public class UserEventsPublishingTests(UsersApiFactory factory) : IClassFixture<
     [Fact]
     public async Task PostRegister_WhenRequestIsValid_ShouldPublishUserRegisteredEvent()
     {
-        await using var connection = await factory.CreateRabbitMqConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        var queue = await BindQueueAsync(channel, UserMessaging.RoutingKeys.Registered);
+        using var sqs = factory.CreateSqsClient();
 
         var client = factory.CreateClient();
         var email = UniqueEmail();
@@ -37,7 +34,7 @@ public class UserEventsPublishingTests(UsersApiFactory factory) : IClassFixture<
             new { name = "Evt Register", email, password = "Strong@123" });
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        var json = await WaitForMessageAsync(channel, queue);
+        var json = await WaitForMessageAsync(sqs, factory.QueueUrl);
         var @event = JsonSerializer.Deserialize<UserRegisteredEvent>(json);
 
         @event.ShouldNotBeNull();
@@ -50,9 +47,7 @@ public class UserEventsPublishingTests(UsersApiFactory factory) : IClassFixture<
     [Fact]
     public async Task PostAdminUsers_WhenRequestIsValid_ShouldPublishUserRegisteredEvent()
     {
-        await using var connection = await factory.CreateRabbitMqConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        var queue = await BindQueueAsync(channel, UserMessaging.RoutingKeys.Registered);
+        using var sqs = factory.CreateSqsClient();
 
         var client = factory.CreateClient();
         var token = await LoginAsAdminAsync(client);
@@ -63,7 +58,7 @@ public class UserEventsPublishingTests(UsersApiFactory factory) : IClassFixture<
             new { name = "Evt Created", email, password = "Strong@123", role = RoleType.User.ToString() });
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        var json = await WaitForMessageAsync(channel, queue);
+        var json = await WaitForMessageAsync(sqs, factory.QueueUrl);
         var @event = JsonSerializer.Deserialize<UserRegisteredEvent>(json);
 
         @event.ShouldNotBeNull();
@@ -72,31 +67,29 @@ public class UserEventsPublishingTests(UsersApiFactory factory) : IClassFixture<
         @event.UserId.ShouldNotBe(Guid.Empty);
     }
 
-    /// <summary>Declara a exchange (igual ao produtor) e uma fila temporária ligada à routing key.</summary>
-    private static async Task<string> BindQueueAsync(IChannel channel, string routingKey)
+    /// <summary>Faz polling na fila SQS até receber uma mensagem ou expirar o tempo limite.</summary>
+    private static async Task<string> WaitForMessageAsync(IAmazonSQS sqs, string queueUrl)
     {
-        await channel.ExchangeDeclareAsync(
-            UserMessaging.Exchange, ExchangeType.Topic, durable: true, autoDelete: false);
-        var queue = await channel.QueueDeclareAsync();
-        await channel.QueueBindAsync(queue.QueueName, UserMessaging.Exchange, routingKey);
-        return queue.QueueName;
-    }
-
-    private static async Task<string> WaitForMessageAsync(IChannel channel, string queue)
-    {
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var consumer = new AsyncEventingBasicConsumer(channel);
-        consumer.ReceivedAsync += (_, ea) =>
-        {
-            tcs.TrySetResult(Encoding.UTF8.GetString(ea.Body.ToArray()));
-            return Task.CompletedTask;
-        };
-        await channel.BasicConsumeAsync(queue, autoAck: true, consumer);
-
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await using var _ = cts.Token.Register(() => tcs.TrySetException(
-            new TimeoutException("Nenhum evento recebido do RabbitMQ dentro do tempo limite.")));
-        return await tcs.Task;
+
+        while (!cts.IsCancellationRequested)
+        {
+            var response = await sqs.ReceiveMessageAsync(new ReceiveMessageRequest
+            {
+                QueueUrl = queueUrl,
+                MaxNumberOfMessages = 1,
+                WaitTimeSeconds = 2
+            }, cts.Token);
+
+            var message = response.Messages.FirstOrDefault();
+            if (message is not null)
+            {
+                await sqs.DeleteMessageAsync(queueUrl, message.ReceiptHandle, cts.Token);
+                return message.Body;
+            }
+        }
+
+        throw new TimeoutException("Nenhum evento recebido do SNS/SQS dentro do tempo limite.");
     }
 
     private static async Task<string> LoginAsAdminAsync(HttpClient client)
