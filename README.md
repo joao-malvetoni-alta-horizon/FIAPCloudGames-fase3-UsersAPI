@@ -1,4 +1,4 @@
-# FIAP Cloud Games — UsersAPI (Fase 2)
+# FIAP Cloud Games — UsersAPI (Fase 3)
 
 Microsserviço de **Usuários** da plataforma FIAP Cloud Games. Responsável por:
 
@@ -112,6 +112,9 @@ message attribute para permitir a correlação do trace no New Relic entre esta 
 Lambda consumidora. Se o SNS estiver indisponível (ou sem credenciais), a falha é
 logada sem quebrar a operação de negócio (entrega garantida exigiria o padrão Outbox).
 
+Testado de ponta a ponta em `tests/FCG.IntegrationTests/UserEventsPublishingTests.cs`,
+que sobe um LocalStack (SNS + SQS) via Testcontainers para validar a publicação real.
+
 ## Observabilidade (New Relic)
 
 A stack de observabilidade escolhida para a Fase 3 é a **opção B — plataforma de APM
@@ -154,12 +157,13 @@ kubectl -n fcg create secret generic fcg-secrets \
 ```
 
 > O comando acima recria o Secret apenas com essa chave. Se `fcg-secrets` já existir com
-> as outras chaves (`RabbitMq__Password`, `JwtSettings__SecretKey`, `Users__ConnectionString`),
+> as outras chaves (`JwtSettings__SecretKey`, `Users__ConnectionString`,
+> `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`),
 > repita-as no mesmo comando ou use `kubectl patch`.
 
 ### Rodando localmente com o agente
 
-O `docker-compose.yml` sobe apenas a infraestrutura (PostgreSQL + RabbitMQ) — a API roda
+O `docker-compose.yml` sobe apenas a infraestrutura (PostgreSQL) — a API roda
 com `dotnet run`, então as variáveis do `Dockerfile` não valem aqui. Exporte-as no shell
 apontando para o output do build (o agente precisa existir em disco, então compile antes):
 
@@ -190,26 +194,20 @@ Nunca comite a license key: ela é um segredo, como as demais chaves do `fcg-sec
 | **Logs** | `NEW_RELIC_APPLICATION_LOGGING_*` liga o encaminhamento e a decoração automáticos dos logs do Serilog, com correlação por `trace.id`/`span.id`. Nenhum sink HTTP foi adicionado. |
 | **Traces** | Trace distribuído habilitado. Sobre HTTP a propagação (W3C Trace Context) é automática: a UsersAPI aparece no mapa de serviços e nos traces que a atravessam. |
 
-### Limitação conhecida: trace sobre o RabbitMQ
+### Limitação conhecida: trace através da mensageria
 
 O fluxo de **Compra de Jogo** não passa por este serviço — biblioteca e compra são
-responsabilidade do `CatalogAPI`. Aqui o RabbitMQ é usado apenas para publicar
-`UserRegisteredEvent` no cadastro. Ainda assim vale o registro:
+responsabilidade do `CatalogAPI`. Aqui a mensageria é usada apenas para publicar
+`UserRegisteredEvent` no cadastro, via SNS (ver
+[Eventos de integração](#eventos-de-integração-sns)). Ainda assim vale o registro:
 
-a instrumentação de mensageria do agente 10.54 (`NewRelic.Providers.Wrapper.RabbitMq`)
-casa com `RabbitMQ.Client` até `maxVersion="6.8.1"`, e este serviço resolve
-**`RabbitMQ.Client` 7.2.1** (transitivo, via `FiapCloudGames.RabbitMq`). Ou seja: a
-publicação na fila **não** é instrumentada automaticamente e o trace não se propaga
-através do broker. Nenhum wrapper de mensageria foi reescrito para contornar isso — o
-trace continua ponta-a-ponta em todo o trecho HTTP.
-
-## Próximos passos (Fase 2)
-Testado de ponta a ponta em `tests/FCG.IntegrationTests/UserEventsPublishingTests.cs`,
-que sobe um LocalStack (SNS + SQS) via Testcontainers para validar a publicação real.
+SNS e SQS não propagam o contexto de trace sozinhos. O `SnsIntegrationEventPublisher`
+injeta o `traceparent` (W3C) como message attribute do `PublishRequest`, mas a ponta a
+ponta só se fecha se o consumidor ler esse atributo e linkar o span ao trace de origem —
+o que é responsabilidade da Lambda do `FIAPCloudGames-fase3-NotificationsAPI`, fora deste
+repositório. No trecho HTTP a propagação é automática e o trace é contínuo.
 
 ## Próximos passos
 
 - Trocar a referência local de `FiapCloudGames.Contracts` por `PackageReference` (nuget.org);
-- Padrão Outbox para entrega garantida dos eventos;
-- Dockerfile de produção (multi-stage — já há um ponto de partida em `src/FCG.API/Dockerfile`);
-- Manifestos Kubernetes em `/k8s` (Deployment, Service, ConfigMap, Secret).
+- Padrão Outbox para entrega garantida dos eventos.
