@@ -13,6 +13,7 @@
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
         <PackageReference Include="NewRelic.Agent" Version="10.54.0" />
+        <PackageReference Include="StackExchange.Redis" Version="3.1.31" />
         <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
         <PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
         <PackageReference Include="Serilog.AspNetCore" Version="9.*" />

@@ -25,6 +25,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  redis:
+    image: redis:7-alpine
+    container_name: userredis
+    command: >
+      redis-server
+      --user default off
+      --user user on ">pass" "~*" "&*" "+@all"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "catalog", "--pass", "pass", "--no-auth-warning", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:
+  redis_data:

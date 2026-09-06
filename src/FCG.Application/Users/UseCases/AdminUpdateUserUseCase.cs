@@ -1,3 +1,4 @@
+using FCG.Application.Shared.Cache;
 using FCG.Application.Users.DTOs;
 using FCG.Application.Users.Interfaces;
 using FCG.Domain.Users.Constants;
@@ -6,13 +7,15 @@ using FCG.Domain.Users.Interfaces;
 
 namespace FCG.Application.Users.UseCases;
 
-public class AdminUpdateUserUseCase(IUserUnitOfWork unitOfWork) : IAdminUpdateUserUseCase
+public class AdminUpdateUserUseCase(IUserUnitOfWork unitOfWork, ICacheService cacheService) : IAdminUpdateUserUseCase
 {
     public async Task<AdminUpdateUserResponse> ExecuteAsync(
         Guid userId,
         AdminUpdateUserRequest request,
         CancellationToken cancellationToken = default)
     {
+        var cacheKey = $"user:{userId}";
+
         var user = await unitOfWork.Users.GetByIdAsync(userId, cancellationToken)
                    ?? throw new UserNotFoundException(userId);
 
@@ -30,6 +33,8 @@ public class AdminUpdateUserUseCase(IUserUnitOfWork unitOfWork) : IAdminUpdateUs
 
         unitOfWork.Users.Update(user);
         await unitOfWork.CommitAsync(cancellationToken);
+
+        await cacheService.RemoveAsync(cacheKey, cancellationToken);
 
         return new AdminUpdateUserResponse(user.Id, user.Name.Value, user.Email.Address, user.IsActive, user.Role);
     }

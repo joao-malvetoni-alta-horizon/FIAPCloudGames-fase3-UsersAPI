@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <ProjectReference Include="..\FCG.Domain\FCG.Domain.csproj"/>
-        <PackageReference Include="FiapCloudGames.Contracts" Version="7.0.0"/>
+        <ProjectReference Include="..\FCG.Domain\FCG.Domain.csproj" />
+        <PackageReference Include="FiapCloudGames.Contracts" Version="7.0.0" />
     </ItemGroup>
 
     <ItemGroup>

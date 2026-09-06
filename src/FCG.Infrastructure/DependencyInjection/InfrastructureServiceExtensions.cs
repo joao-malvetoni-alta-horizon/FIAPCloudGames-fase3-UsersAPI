@@ -1,16 +1,16 @@
-using System.Security.Claims;
-using System.Text;
 using Amazon.SimpleNotificationService;
 using FCG.Application.Auth.Interfaces;
+using FCG.Application.Messaging;
+using FCG.Application.Shared.Cache;
 using FCG.Domain.Shared;
 using FCG.Domain.Users.Enums;
 using FCG.Domain.Users.Interfaces;
 using FCG.Domain.Users.Services;
+using FCG.Infrastructure.Cache;
+using FCG.Infrastructure.Messaging;
 using FCG.Infrastructure.Persistence;
 using FCG.Infrastructure.Persistence.Context;
 using FCG.Infrastructure.Persistence.Repositories;
-using FCG.Application.Messaging;
-using FCG.Infrastructure.Messaging;
 using FCG.Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +18,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
+using System.Security.Claims;
+using System.Text;
 
 namespace FCG.Infrastructure.DependencyInjection;
 
@@ -34,7 +37,8 @@ public static class InfrastructureServiceExtensions
                 .AddDomainServices()
                 .AddMessaging(configuration)
                 .AddJwtAuthentication(configuration)
-                .AddAuthorizationPolicies();
+                .AddAuthorizationPolicies()
+                .AddRedis(configuration);
         }
 
         private IServiceCollection ConfigureDb(IConfiguration configuration)
@@ -111,6 +115,15 @@ public static class InfrastructureServiceExtensions
             {
                 options.AddPolicy("AdminOnly", policy => policy.RequireRole(RoleType.Administrator.DisplayName));
             });
+        }
+
+        private IServiceCollection AddRedis(IConfiguration configuration)
+        {
+            services.AddSingleton<IConnectionMultiplexer>(sp =>
+                ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis")??""));
+
+            services.AddSingleton<ICacheService, RedisCacheService>();
+            return services;
         }
     }
 }
