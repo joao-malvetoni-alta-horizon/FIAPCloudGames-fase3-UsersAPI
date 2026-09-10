@@ -38,3 +38,7 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Variáveis de ambiente locais (nunca versionar segredos, ex.: NEW_RELIC_LICENSE_KEY)
+.env
+.env.local
